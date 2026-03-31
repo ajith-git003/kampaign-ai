@@ -4,6 +4,7 @@ import MetricCard from "../components/MetricCard";
 import CampaignTable from "../components/CampaignTable";
 import InsightCard from "../components/InsightCard";
 import ActionCard from "../components/ActionCard";
+import ChatPanel from "../components/ChatPanel";
 import { ToastContainer, useToasts } from "../components/Toast";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -16,6 +17,7 @@ export default function Dashboard() {
   const [loading, setLoading]             = useState(true);
   const [error, setError]                 = useState(null);
   const [historyOpen, setHistoryOpen]     = useState(false);
+  const [chatOpen, setChatOpen]           = useState(false);
 
   const { toasts, addToast, removeToast } = useToasts();
 
@@ -202,6 +204,28 @@ export default function Dashboard() {
       </section>
 
       <ToastContainer toasts={toasts} removeToast={removeToast} />
+
+      {/* Floating chat button */}
+      <button
+        onClick={() => setChatOpen(true)}
+        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-indigo-600
+                   hover:bg-indigo-500 shadow-lg flex items-center justify-center
+                   transition-colors group"
+        title="Ask Kampaign.ai"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
+        </svg>
+        <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-[#13151f]" />
+      </button>
+
+      {/* Chat panel */}
+      {chatOpen && (
+        <ChatPanel
+          campaigns={campaigns}
+          onClose={() => setChatOpen(false)}
+        />
+      )}
     </div>
   );
 }

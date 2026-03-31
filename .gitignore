@@ -1,0 +1,17 @@
+﻿.env
+.env.local
+credentials.json
+venv/
+.venv/
+backend/venv/
+backend/.venv/
+__pycache__/
+*.pyc
+*.pyo
+node_modules/
+dist/
+build/
+.DS_Store
+*.log
+*.dll
+*.exe

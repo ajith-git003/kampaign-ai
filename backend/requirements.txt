@@ -1,0 +1,38 @@
+# Kampaign.ai — AI-native campaign engine
+# Python dependencies
+
+# Web framework
+fastapi
+uvicorn[standard]
+
+# Database — async SQLAlchemy + asyncpg driver + migrations
+sqlalchemy[asyncio]
+asyncpg
+alembic
+
+# Task queue
+celery[redis]
+redis
+
+# Environment
+python-dotenv
+pydantic-settings
+
+# Data / ML
+pandas
+numpy
+scikit-learn
+sentence-transformers
+
+# Pydantic v2
+pydantic[email]
+
+# Ad platform
+facebook-business
+
+# Google Sheets
+gspread
+google-auth
+
+# AI — GPT-4o-mini
+openai

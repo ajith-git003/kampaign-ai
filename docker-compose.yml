@@ -1,0 +1,64 @@
+# Kampaign.ai — AI-native campaign engine
+# Docker Compose: FastAPI backend + Celery worker + Celery beat + Redis + React frontend
+
+version: "3.9"
+
+services:
+  # ── FastAPI backend ────────────────────────────────────────────────────────
+  backend:
+    build: ./backend
+    container_name: kampaign_backend
+    env_file: ./backend/.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app
+      - ./secrets:/app/secrets:ro   # mount Google service account JSON here
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ── Celery worker ──────────────────────────────────────────────────────────
+  worker:
+    build: ./backend
+    container_name: kampaign_worker
+    env_file: ./backend/.env
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app
+      - ./secrets:/app/secrets:ro
+    command: celery -A tasks.celery_app worker --loglevel=info
+
+  # ── Celery beat scheduler ──────────────────────────────────────────────────
+  beat:
+    build: ./backend
+    container_name: kampaign_beat
+    env_file: ./backend/.env
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app
+    command: celery -A tasks.celery_app beat --loglevel=info
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: kampaign_redis
+    ports:
+      - "6379:6379"
+
+  # ── React frontend (dev server) ────────────────────────────────────────────
+  frontend:
+    image: node:20-alpine
+    container_name: kampaign_frontend
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Creatives from "./pages/Creatives";
 import Launch from "./pages/Launch";
+import Strategy from "./pages/Strategy";
 
 function App() {
   return (
@@ -18,8 +19,9 @@ function App() {
           <div className="flex gap-6 text-sm">
             {[
               { to: "/", label: "Dashboard" },
-              { to: "/creatives", label: "Creatives" },
               { to: "/launch", label: "Launch" },
+              { to: "/strategy", label: "Strategy" },
+              { to: "/creatives", label: "Creatives" },
             ].map(({ to, label }) => (
               <NavLink
                 key={to}
@@ -45,6 +47,7 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/creatives" element={<Creatives />} />
             <Route path="/launch" element={<Launch />} />
+            <Route path="/strategy" element={<Strategy />} />
           </Routes>
         </main>
       </div>

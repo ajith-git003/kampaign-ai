@@ -3,7 +3,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy import text
@@ -68,7 +68,10 @@ async def sample_metrics(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/ingest")
-async def ingest_from_sheet(db: AsyncSession = Depends(get_db)):
+async def ingest_from_sheet(
+    truncate: bool = Query(default=False, description="Truncate campaign_metrics before ingesting"),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Pull data from the Google Sheet configured in .env and persist
     each row as a CampaignMetric.
@@ -77,6 +80,11 @@ async def ingest_from_sheet(db: AsyncSession = Depends(get_db)):
       GOOGLE_SHEET_ID, GOOGLE_SHEET_NAME, GOOGLE_SERVICE_ACCOUNT_JSON
     """
     try:
+        if truncate:
+            await db.execute(text("TRUNCATE TABLE campaign_metrics"))
+            await db.commit()
+            logger.info("Kampaign.ai | Sheets: campaign_metrics truncated")
+
         rows = await fetch_and_map_sheet()
 
         if not rows:

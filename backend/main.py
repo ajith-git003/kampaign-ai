@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from database import engine, Base
-from routers import campaigns, creatives, insights, sheets, actions, chat, strategy
+from routers import campaigns, creatives, insights, sheets, actions, chat, strategy, analytics, dashboard
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 logger = logging.getLogger("kampaign")
@@ -50,7 +50,9 @@ app.include_router(insights.router, prefix="/api/insights", tags=["insights"])
 app.include_router(sheets.router,  prefix="/api/sheets",  tags=["sheets"])
 app.include_router(actions.router, prefix="/api/actions", tags=["actions"])
 app.include_router(chat.router,     prefix="/api/chat",     tags=["chat"])
-app.include_router(strategy.router, prefix="/api/strategy", tags=["strategy"])
+app.include_router(strategy.router,   prefix="/api/strategy",   tags=["strategy"])
+app.include_router(analytics.router,  prefix="/api/analytics",  tags=["analytics"])
+app.include_router(dashboard.router,  prefix="/api/dashboard",  tags=["dashboard"])
 
 
 @app.get("/")

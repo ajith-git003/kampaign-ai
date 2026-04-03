@@ -62,6 +62,12 @@ _ACTIONS_SYSTEM_PROMPT = (
     "Use reduce_budget when recommending budget cuts. "
     "Use increase_budget when recommending budget increases. "
     "Never use any other action_type values. "
+    "CRITICAL: You MUST return EXACTLY 3 actions in the array. "
+    "Always include these 3 types: "
+    "1. pause_campaign OR reduce_budget for the worst ROAS campaign. "
+    "2. increase_budget for the best ROAS campaign. "
+    "3. reduce_budget OR pause_campaign for the second worst ROAS campaign. "
+    "Never return fewer than 3 actions. "
     "Output ONLY valid JSON array. No markdown, no explanation, just the JSON."
 )
 
@@ -231,6 +237,12 @@ Always reference the exact campaign name in each recommendation."""
     logger.info("Kampaign.ai | Insights: GPT analyst returned %d chars", len(insight_text))
 
     # ── Call 2: Convert recommendations → structured actions JSON ─────────────
+    # Sort campaigns by ROAS to give the model explicit best/worst context
+    sorted_by_roas = sorted(per_campaign, key=lambda x: x["avg_roas"])
+    worst   = sorted_by_roas[0]["campaign_name"]  if sorted_by_roas else ""
+    second  = sorted_by_roas[1]["campaign_name"]  if len(sorted_by_roas) > 1 else worst
+    best    = sorted_by_roas[-1]["campaign_name"] if sorted_by_roas else ""
+
     valid_campaigns = [c["campaign_name"] for c in per_campaign]
     actions_user_prompt = f"""Recommendations:
 {insight_text}
@@ -238,19 +250,24 @@ Always reference the exact campaign name in each recommendation."""
 Valid campaign names (use EXACTLY as written):
 {chr(10).join(f'  - {n}' for n in valid_campaigns)}
 
-Generate a JSON array where each item has:
-  action_type: one of EXACTLY these four values:
-    "pause_campaign"   — when recommending to pause a campaign
-    "increase_budget"  — when recommending a budget increase
-    "reduce_budget"    — when recommending a budget cut or reduction
-    "launch_campaign"  — when recommending a new campaign
-  Never use any other action_type values.
+Worst ROAS campaign:  {worst}
+Second worst ROAS:    {second}
+Best ROAS campaign:   {best}
+
+You MUST return a JSON array with EXACTLY 3 items — no more, no fewer:
+  Item 1: {{"action_type": "pause_campaign",  "campaign_name": "{worst}",  ...}}
+  Item 2: {{"action_type": "increase_budget", "campaign_name": "{best}",   ...}}
+  Item 3: {{"action_type": "reduce_budget",   "campaign_name": "{second}", ...}}
+
+Each item must have:
+  action_type: one of: pause_campaign | increase_budget | reduce_budget | launch_campaign
   campaign_name: exact name from the valid list above
   reason: one sentence
   expected_impact: one sentence
   priority: "high" | "medium" | "low"
-  suggested_budget_usd: number (only for launch_campaign, increase_budget, or reduce_budget, else omit)
+  suggested_budget_usd: number (only for increase_budget or reduce_budget, else omit)
 
+The array must have exactly 3 elements. Not 2, not 4. Exactly 3.
 Output ONLY the JSON array. No markdown fences."""
 
     def _actions_call() -> list[dict]:
@@ -278,6 +295,46 @@ Output ONLY the JSON array. No markdown fences."""
         logger.error("Kampaign.ai | Insights: actions JSON parse failed — %s", exc)
         actions = []
 
+    # ── Guarantee exactly 3 actions ───────────────────────────────────────────
+    # If the model returned fewer than 3, synthesise the missing ones from
+    # the per-campaign metrics so the UI always shows exactly 3 cards.
+    existing_types = {a.get("action_type") for a in actions}
+    fallback_templates = [
+        {
+            "action_type":   "pause_campaign",
+            "campaign_name": sorted_by_roas[0]["campaign_name"] if sorted_by_roas else (valid_campaigns[0] if valid_campaigns else "Unknown"),
+            "reason":        f"Lowest ROAS campaign ({sorted_by_roas[0]['avg_roas']:.2f}x) — pausing to protect budget.",
+            "expected_impact": "Stops wasteful spend and frees budget for higher-performing campaigns.",
+            "priority":      "high",
+        },
+        {
+            "action_type":   "increase_budget",
+            "campaign_name": sorted_by_roas[-1]["campaign_name"] if sorted_by_roas else (valid_campaigns[-1] if valid_campaigns else "Unknown"),
+            "reason":        f"Highest ROAS campaign ({sorted_by_roas[-1]['avg_roas']:.2f}x) — scaling to capture more return.",
+            "expected_impact": "Amplifies revenue from the best-performing campaign.",
+            "priority":      "high",
+        },
+        {
+            "action_type":   "reduce_budget",
+            "campaign_name": sorted_by_roas[1]["campaign_name"] if len(sorted_by_roas) > 1 else (valid_campaigns[0] if valid_campaigns else "Unknown"),
+            "reason":        f"Second lowest ROAS ({sorted_by_roas[1]['avg_roas']:.2f}x) — reduce spend until performance improves.",
+            "expected_impact": "Reduces inefficient spend while keeping the campaign live for testing.",
+            "priority":      "medium",
+        },
+    ]
+    for template in fallback_templates:
+        if len(actions) >= 3:
+            break
+        # Only add if we don't already have this action_type
+        if template["action_type"] not in existing_types:
+            actions.append(template)
+            existing_types.add(template["action_type"])
+            logger.info(
+                "Kampaign.ai | Insights: added fallback action '%s' for '%s'",
+                template["action_type"], template["campaign_name"],
+            )
+
+    logger.info("Kampaign.ai | Insights: final actions count = %d", len(actions))
     return insight_text, actions
 
 

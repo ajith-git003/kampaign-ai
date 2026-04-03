@@ -13,7 +13,7 @@ from sqlalchemy import select, func, text
 from pydantic import BaseModel
 
 from database import get_db
-from models import CampaignMetric
+from models import CampaignMetric, CampaignRegistry
 from services.ai_service import get_openai_client
 
 router = APIRouter()
@@ -39,6 +39,20 @@ class ChatResponse(BaseModel):
     answer: str
     suggested_actions: list[str]
     data_used: list[str]
+
+
+@router.get("/campaigns")
+async def get_chat_campaigns(db: AsyncSession = Depends(get_db)):
+    """Return distinct campaign names from campaign_registry for the chat dropdown."""
+    result = await db.execute(
+        select(CampaignRegistry.campaign_name)
+        .where(CampaignRegistry.campaign_name.isnot(None))
+        .order_by(CampaignRegistry.campaign_name)
+        .distinct()
+    )
+    names = [row[0] for row in result.all()]
+    logger.info("Kampaign.ai | Chat: campaigns endpoint — %d names", len(names))
+    return [{"name": n} for n in names]
 
 
 @router.post("/ask", response_model=ChatResponse)

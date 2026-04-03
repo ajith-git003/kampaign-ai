@@ -1,4 +1,4 @@
-// Kampaign.ai — AI-native campaign engine — Dashboard page
+// Kampaign.ai — Dashboard page
 import { useCallback, useEffect, useState } from "react";
 import MetricCard from "../components/MetricCard";
 import CampaignTable from "../components/CampaignTable";
@@ -11,13 +11,16 @@ const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 export default function Dashboard() {
   const [campaigns, setCampaigns]         = useState([]);
+  const [chatCampaigns, setChatCampaigns] = useState([]);
   const [insights, setInsights]           = useState([]);
   const [latestActions, setLatestActions] = useState([]);
   const [generatedAt, setGeneratedAt]     = useState(null);
+  const [stats, setStats]                 = useState(null);
   const [loading, setLoading]             = useState(true);
   const [error, setError]                 = useState(null);
   const [historyOpen, setHistoryOpen]     = useState(false);
   const [chatOpen, setChatOpen]           = useState(false);
+  const [showDrafts, setShowDrafts]       = useState(false);
 
   const { toasts, addToast, removeToast } = useToasts();
 
@@ -26,12 +29,16 @@ export default function Dashboard() {
       fetch(`${API}/api/campaigns/`).then((r) => r.json()),
       fetch(`${API}/api/insights/`).then((r) => r.json()),
       fetch(`${API}/api/insights/latest`).then((r) => r.json()),
+      fetch(`${API}/api/dashboard/stats`).then((r) => r.json()),
+      fetch(`${API}/api/chat/campaigns`).then((r) => r.json()),
     ])
-      .then(([c, i, latest]) => {
+      .then(([c, i, latest, s, cc]) => {
         setCampaigns(c);
+        setChatCampaigns(cc);
         setInsights(i);
         setLatestActions(latest.actions ?? []);
         setGeneratedAt(latest.generated_at ?? null);
+        setStats(s);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -39,15 +46,10 @@ export default function Dashboard() {
 
   const removeAction = useCallback((action) => {
     setLatestActions((prev) =>
-      prev.filter(
-        (a) =>
-          !(a.action_type === action.action_type &&
-            a.campaign_name === action.campaign_name)
-      )
+      prev.filter((a) => !(a.action_type === action.action_type && a.campaign_name === action.campaign_name))
     );
   }, []);
 
-  // FIX 4 — delete campaign
   const deleteCampaign = useCallback(async (id, name) => {
     if (!window.confirm(`Delete "${name}" from Kampaign.ai?\n\n(This will NOT delete it from Facebook)`)) return;
     try {
@@ -60,146 +62,174 @@ export default function Dashboard() {
   }, [addToast]);
 
   const kpis = [
-    { label: "Active Campaigns",   value: campaigns.filter((c) => c.status === "active").length },
-    { label: "Total Campaigns",    value: campaigns.length },
-    { label: "Open Insights",      value: insights.filter((i) => !i.acknowledged).length },
-    { label: "AI Recommendations", value: latestActions.length },
+    { label: "Active Campaigns",   value: stats?.active_campaigns   ?? campaigns.filter((c) => c.status === "active").length },
+    { label: "Total Campaigns",    value: stats?.total_campaigns    ?? campaigns.length },
+    { label: "Open Insights",      value: stats?.open_insights      ?? insights.filter((i) => !i.acknowledged).length },
+    { label: "AI Recommendations", value: stats?.ai_recommendations ?? latestActions.length },
   ];
 
   const formattedDate = generatedAt
     ? new Date(generatedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })
     : null;
 
-  // FIX 3 — split insights: latest vs history
-  const latestInsight  = insights[0] ?? null;
-  const olderInsights  = insights.slice(1);
+  const latestInsight = insights[0] ?? null;
+  const olderInsights = insights.slice(1);
 
   return (
     <div className="space-y-8">
+      {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-gray-400 text-sm mt-1">Kampaign.ai — AI-native campaign engine</p>
+        <h1 className="text-2xl font-bold" style={{ color: "var(--k-text)", letterSpacing: "-0.02em" }}>
+          Dashboard
+        </h1>
+        <p className="text-sm mt-1" style={{ color: "var(--k-text-muted)" }}>
+          Campaign overview · Glowra Skincare
+        </p>
       </div>
 
       {error && (
-        <div className="bg-red-900/30 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">
+        <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}>
           Failed to load data: {error}
         </div>
       )}
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {kpis.map((k) => (
-          <MetricCard key={k.label} label={k.label} value={String(k.value)} />
+        {kpis.map((k, i) => (
+          <MetricCard key={k.label} label={k.label} value={String(k.value)} colorIndex={i} />
         ))}
       </div>
 
-      {/* AI Recommendations */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-lg font-semibold">AI Recommendations</h2>
-            {formattedDate && (
-              <p className="text-xs text-gray-500 mt-0.5">Generated {formattedDate}</p>
+      {/* Two-column layout: left 60% | right 40% */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+        {/* Left: AI Recommendations */}
+        <section className="lg:col-span-3 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold" style={{ color: "var(--k-text)" }}>
+                AI Recommendations
+              </h2>
+              {formattedDate && (
+                <p className="text-xs mt-0.5" style={{ color: "var(--k-text-muted)" }}>
+                  Generated {formattedDate}
+                </p>
+              )}
+            </div>
+            {latestActions.length > 0 && (
+              <span className="text-xs" style={{ color: "var(--k-text-muted)" }}>
+                {latestActions.length} pending
+              </span>
             )}
           </div>
-          {latestActions.length > 0 && (
-            <span className="text-xs text-gray-500">
-              {latestActions.length} pending action{latestActions.length !== 1 ? "s" : ""}
-            </span>
-          )}
-        </div>
 
-        {loading ? (
-          <p className="text-gray-400 text-sm">Loading…</p>
-        ) : latestActions.length === 0 ? (
-          <div className="bg-[#1e2235] rounded-lg px-4 py-6 text-center">
-            <p className="text-gray-500 text-sm">
-              No pending recommendations.{" "}
-              <button
-                onClick={async () => {
-                  try {
-                    addToast("Generating AI recommendations…", "info", 8000);
-                    const res = await fetch(`${API}/api/insights/generate`, { method: "POST" });
-                    const data = await res.json();
-                    setLatestActions(data.actions ?? []);
-                    setGeneratedAt(data.generated_at);
-                    addToast(`Generated ${(data.actions ?? []).length} recommendations`, "success");
-                  } catch (err) {
-                    addToast(`Generation failed: ${err.message}`, "error");
-                  }
-                }}
-                className="text-indigo-400 hover:text-indigo-300 underline transition"
-              >
-                Generate now
-              </button>
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {latestActions.map((action, idx) => (
-              <ActionCard
-                key={`${action.action_type}-${action.campaign_name}-${idx}`}
-                action={action}
-                addToast={addToast}
-                onExecuted={removeAction}
-                onDismissed={removeAction}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Campaigns table — FIX 4 delete + FIX 5 ₹ */}
-      <section>
-        <h2 className="text-lg font-semibold mb-3">Campaigns</h2>
-        {loading ? (
-          <p className="text-gray-400 text-sm">Loading…</p>
-        ) : (
-          <CampaignTable campaigns={campaigns} onDelete={deleteCampaign} />
-        )}
-      </section>
-
-      {/* AI Insights — FIX 3: latest expanded, older collapsed */}
-      <section>
-        <h2 className="text-lg font-semibold mb-3">AI Insights</h2>
-        {loading ? (
-          <p className="text-gray-400 text-sm">Loading…</p>
-        ) : !latestInsight ? (
-          <p className="text-gray-500 text-sm">
-            No insights yet — generate recommendations to get started.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {/* Latest insight — always expanded */}
-            <InsightCard insight={latestInsight} />
-
-            {/* Older insights — collapsible */}
-            {olderInsights.length > 0 && (
-              <div>
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((n) => (
+                <div key={n} className="rounded-xl h-24 animate-pulse" style={{ background: "var(--k-card)", border: "1px solid var(--k-card-border)" }} />
+              ))}
+            </div>
+          ) : latestActions.length === 0 ? (
+            <div className="rounded-xl px-4 py-8 text-center" style={{ background: "var(--k-card)", border: "1px solid var(--k-card-border)" }}>
+              <p className="text-sm" style={{ color: "var(--k-text-muted)" }}>
+                No pending recommendations.{" "}
                 <button
-                  onClick={() => setHistoryOpen((o) => !o)}
-                  className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-200 transition mt-1"
+                  onClick={async () => {
+                    try {
+                      addToast("Generating AI recommendations…", "info", 8000);
+                      const res = await fetch(`${API}/api/insights/generate`, { method: "POST" });
+                      const data = await res.json();
+                      setLatestActions(data.actions ?? []);
+                      setGeneratedAt(data.generated_at);
+                      addToast(`Generated ${(data.actions ?? []).length} recommendations`, "success");
+                    } catch (err) {
+                      addToast(`Generation failed: ${err.message}`, "error");
+                    }
+                  }}
+                  className="text-indigo-400 hover:text-indigo-300 underline transition"
                 >
-                  <svg
-                    className={`w-3.5 h-3.5 transition-transform ${historyOpen ? "rotate-90" : ""}`}
-                    viewBox="0 0 20 20" fill="currentColor"
-                  >
-                    <path fillRule="evenodd" d="M7.293 4.293a1 1 0 011.414 0L14.414 10l-5.707 5.707a1 1 0 01-1.414-1.414L11.586 10 7.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                  </svg>
-                  Previous Insights ({olderInsights.length})
+                  Generate now
                 </button>
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {latestActions.map((action, idx) => (
+                <ActionCard
+                  key={`${action.action_type}-${action.campaign_name}-${idx}`}
+                  action={action}
+                  addToast={addToast}
+                  onExecuted={removeAction}
+                  onDismissed={removeAction}
+                />
+              ))}
+            </div>
+          )}
+        </section>
 
-                {historyOpen && (
-                  <div className="mt-3 space-y-3 max-h-[600px] overflow-y-auto pr-1">
-                    {olderInsights.map((ins) => (
-                      <InsightCard key={ins.id} insight={ins} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+        {/* Right: AI Insights */}
+        <section className="lg:col-span-2 space-y-4">
+          <h2 className="text-base font-semibold" style={{ color: "var(--k-text)" }}>AI Insights</h2>
+
+          {loading ? (
+            <div className="rounded-xl h-48 animate-pulse" style={{ background: "var(--k-card)", border: "1px solid var(--k-card-border)" }} />
+          ) : !latestInsight ? (
+            <p className="text-sm" style={{ color: "var(--k-text-muted)" }}>
+              No insights yet — generate recommendations to get started.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <InsightCard insight={latestInsight} isLatest />
+
+              {olderInsights.length > 0 && (
+                <div>
+                  <button
+                    onClick={() => setHistoryOpen((o) => !o)}
+                    className="flex items-center gap-2 text-sm transition mt-1"
+                    style={{ color: "var(--k-text-muted)" }}
+                  >
+                    <svg className={`w-3.5 h-3.5 transition-transform ${historyOpen ? "rotate-90" : ""}`} viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M7.293 4.293a1 1 0 011.414 0L14.414 10l-5.707 5.707a1 1 0 01-1.414-1.414L11.586 10 7.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                    Previous Insights ({olderInsights.length})
+                  </button>
+                  {historyOpen && (
+                    <div className="mt-3 space-y-3 max-h-[600px] overflow-y-auto pr-1">
+                      {olderInsights.map((ins) => <InsightCard key={ins.id} insight={ins} />)}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      </div>
+
+      {/* Campaigns table */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold" style={{ color: "var(--k-text)" }}>Campaigns</h2>
+          <label className="flex items-center gap-2 text-xs cursor-pointer select-none" style={{ color: "var(--k-text-muted)" }}>
+            <input
+              type="checkbox"
+              checked={showDrafts}
+              onChange={(e) => setShowDrafts(e.target.checked)}
+              className="accent-indigo-500"
+            />
+            Show drafts
+          </label>
+        </div>
+        {loading ? (
+          <div className="rounded-xl h-32 animate-pulse" style={{ background: "var(--k-card)", border: "1px solid var(--k-card-border)" }} />
+        ) : (
+          <CampaignTable
+            campaigns={(() => {
+              // FIX 2 — always strip failed test campaigns (draft + never reached Facebook)
+              const real = campaigns.filter((c) => !(c.status === "draft" && !c.meta_campaign_id));
+              return showDrafts ? real : real.filter((c) => c.status !== "draft");
+            })()}
+            onDelete={deleteCampaign}
+          />
         )}
       </section>
 
@@ -208,24 +238,17 @@ export default function Dashboard() {
       {/* Floating chat button */}
       <button
         onClick={() => setChatOpen(true)}
-        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-indigo-600
-                   hover:bg-indigo-500 shadow-lg flex items-center justify-center
-                   transition-colors group"
+        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-105"
+        style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
         title="Ask Kampaign.ai"
       >
         <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
           <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
         </svg>
-        <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-[#13151f]" />
+        <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full border-2" style={{ borderColor: "var(--k-bg)" }} />
       </button>
 
-      {/* Chat panel */}
-      {chatOpen && (
-        <ChatPanel
-          campaigns={campaigns}
-          onClose={() => setChatOpen(false)}
-        />
-      )}
+      {chatOpen && <ChatPanel campaigns={chatCampaigns} onClose={() => setChatOpen(false)} />}
     </div>
   );
 }

@@ -167,11 +167,8 @@ export default function ChatPanel({ campaigns = [], onClose }) {
     sendMessage(`How do I: ${actionText}`);
   }
 
-  const campaignNames = [...new Set(
-    campaigns
-      .map((c) => c.name)
-      .filter(Boolean)
-  )];
+  // campaigns is [{name: "..."}] from /api/chat/campaigns
+  const campaignNames = campaigns.map((c) => c.name).filter(Boolean);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end pointer-events-none">
@@ -272,9 +269,6 @@ export default function ChatPanel({ campaigns = [], onClose }) {
               </svg>
             </button>
           </div>
-          <p className="text-xs text-gray-700 mt-1.5 text-center">
-            Powered by GPT-4o-mini · Kampaign.ai
-          </p>
         </div>
       </div>
     </div>

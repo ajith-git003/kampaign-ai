@@ -43,28 +43,51 @@ def _clean(val: Any, field: str) -> Any:
 def _parse_date(val: Any) -> datetime:
     """
     Parse dates from the sheet. Handles:
-      - "April 1", "May 15"  (no year — current year is appended)
+      - "1-Oct", "2-Nov", "15-Jan"  (day-MonthAbbr, no year)
+        Oct-Dec → 2025, Jan-Mar → 2026
+      - "April 1", "May 15"  (full month name + day, no year)
       - "01/04/2025", "2025-04-01", "01-04-2025", "01 Apr 2025"
     Falls back to utcnow if nothing matches.
     """
+    import re
+
     if isinstance(val, datetime):
         return val
 
     raw = str(val).strip()
 
-    # "April 1" / "May 15" — month-name + day, no year
-    try:
-        date_str = f"{raw} {datetime.now().year}"
-        return datetime.strptime(date_str, "%B %d %Y")
-    except ValueError:
-        pass
-
-    # Standard formats with full year
-    for fmt in ("%d/%m/%Y", "%m/%d/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d %b %Y", "%B %d, %Y"):
+    # Standard formats with full year — try first
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%d %b %Y", "%B %d, %Y"):
         try:
             return datetime.strptime(raw, fmt)
         except ValueError:
             continue
+
+    # "1-Oct", "2-Nov", "15-Jan" — day-MonthAbbr, no year
+    # Oct–Dec belong to 2025; Jan–Mar belong to 2026
+    _MONTH_YEAR = {
+        "Jan": (2026, 1),  "Feb": (2026, 2),  "Mar": (2026, 3),
+        "Apr": (2025, 4),  "May": (2025, 5),  "Jun": (2025, 6),
+        "Jul": (2025, 7),  "Aug": (2025, 8),  "Sep": (2025, 9),
+        "Oct": (2025, 10), "Nov": (2025, 11), "Dec": (2025, 12),
+    }
+    m = re.match(r"^(\d{1,2})-([A-Za-z]{3,})$", raw)
+    if m:
+        day = int(m.group(1))
+        mon = m.group(2).capitalize()[:3]
+        if mon in _MONTH_YEAR:
+            year, month = _MONTH_YEAR[mon]
+            return datetime(year, month, day)
+
+    # "April 1" / "May 15" — full month name + day, no year
+    # Assume same year-assignment logic: Oct–Dec 2025, Jan–Mar 2026
+    m2 = re.match(r"^([A-Za-z]+)\s+(\d{1,2})$", raw)
+    if m2:
+        mon_full = m2.group(1).capitalize()[:3]
+        day = int(m2.group(2))
+        if mon_full in _MONTH_YEAR:
+            year, month = _MONTH_YEAR[mon_full]
+            return datetime(year, month, day)
 
     logger.warning("Kampaign.ai | Could not parse date '%s', using utcnow", raw)
     return datetime.utcnow()

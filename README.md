@@ -358,12 +358,6 @@ action_log (PostgreSQL)
 
 ---
 
-## Demo
-
-Watch the full demo: [LinkedIn Post] (coming soon)
-
----
-
 ## Author
 
 **Ajith Kumar**
